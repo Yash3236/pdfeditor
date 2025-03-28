@@ -11,7 +11,7 @@ import docx
 from docx.shared import Inches
 import os
 
-# Initialize session state for font selection and added elements (to persist between reruns)
+# Initialize session state
 if 'font_name' not in st.session_state:
     st.session_state['font_name'] = 'Helvetica'  # Default font
 if 'font_size' not in st.session_state:
