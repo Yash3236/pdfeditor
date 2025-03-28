@@ -8,6 +8,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import tempfile
+import colorsys  # Import for color conversion
 
 # Optional imports for DOCX conversion
 try:
@@ -15,6 +16,34 @@ try:
     DOCX_CONVERSION_AVAILABLE = True
 except ImportError:
     DOCX_CONVERSION_AVAILABLE = False
+
+# Helper function to convert any color format to hex
+def to_hex_color(color):
+    """Converts a color (name, hex, RGB tuple) to a hex code."""
+    if isinstance(color, str):
+        # Check if it's already a hex code
+        if color.startswith('#'):
+            return color
+        # Try to convert named color to hex (basic support)
+        try:
+            import matplotlib.colors  # Requires matplotlib
+            hex_color = matplotlib.colors.to_hex(color)  # Convert color name to hex
+            return hex_color
+        except ImportError:
+            st.warning("matplotlib is recommended for converting color names to hex codes.")
+            return '#000000'  # Default to black if matplotlib is not available
+        except ValueError: #matplotlib couldn't parse
+           st.warning(f"Invalid color name: {color}.  Using black instead.")
+           return '#000000'
+    elif isinstance(color, tuple) or isinstance(color, list):
+        # Assume it's an RGB tuple (0-1 range)
+        r, g, b = color
+        return '#{:02x}{:02x}{:02x}'.format(int(r * 255), int(g * 255), int(b * 255))
+    else:
+        st.warning(f"Unexpected color format: {color}.  Using black instead.")
+        return '#000000'  # Default to black for unknown formats
+
+
 
 # Initialize session state
 def initialize_session_state():
@@ -61,13 +90,9 @@ def add_text_to_pdf(pdf_path, output_path, text, x, y, font_name, font_size, col
             # Set font and color
             can.setFont(font_name, font_size)
 
-            # Ensure color is handled as a string (hex code)
-            if isinstance(color, tuple) or isinstance(color, list):  # Convert RGB/RGBA tuple to hex
-                hex_color = '#{:02x}{:02x}{:02x}'.format(int(color[0] * 255), int(color[1] * 255),
-                                                         int(color[2] * 255))  # Assumes RGB in range 0-1
-                can.setFillColor(hex_color)
-            else:  # Assume it's a hex code string (or something ReportLab can handle)
-                can.setFillColor(color)
+            # *FORCE* hex conversion
+            hex_color = to_hex_color(color)
+            can.setFillColor(hex_color)
 
             # Add text (only to the first page)
             if page_num == 0:
@@ -148,13 +173,15 @@ def main():
 
                     if st.button("Add Text"):
                         if text_to_add:
+                            # Convert the color to hex *before* storing it
+                            hex_color = to_hex_color(st.session_state['text_color'])
                             st.session_state['added_elements'].append({
                                 'text': text_to_add,
                                 'x': x_position,
                                 'y': y_position,
                                 'font_name': st.session_state['font_name'],
                                 'font_size': st.session_state['font_size'],
-                                'color': st.session_state['text_color']
+                                'color': hex_color  # Store hex code
                             })
                         else:
                             st.warning("Please enter text to add.")
