@@ -21,7 +21,7 @@ def initialize_session_state():
     default_states = {
         'font_name': 'Helvetica',
         'font_size': 12,
-        'text_color': '#000000',  # Default to black hex code
+        'text_color': '#000000',  # Default to black hex code (FIXED!)
         'added_elements': []
     }
     for key, value in default_states.items():
@@ -96,144 +96,165 @@ def main():
     uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
 
     if uploaded_file is not None:
-        # Create temporary files to work with
+        input_pdf_path = None  # Initialize outside the try block
+        output_pdf_path = None
+        docx_path = None
+
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_input_pdf:
-                temp_input_pdf.write(uploaded_file.getbuffer())
                 input_pdf_path = temp_input_pdf.name
+                temp_input_pdf.write(uploaded_file.getbuffer())
 
             # Display PDF information
-            pdf_reader = PdfReader(open(input_pdf_path, 'rb'))
-            num_pages = len(pdf_reader.pages)
-            st.write(f"Number of pages: {num_pages}")
+            if input_pdf_path:  # Only proceed if input_pdf_path is valid
+                try:
+                    pdf_reader = PdfReader(open(input_pdf_path, 'rb'))
+                    num_pages = len(pdf_reader.pages)
+                    st.write(f"Number of pages: {num_pages}")
 
-            # Editing Tools
-            st.header("PDF Editing")
+                    # Editing Tools
+                    st.header("PDF Editing")
 
-            # Font Style Selection
-            font_options = ['Helvetica', 'Times-Roman', 'Courier', 'Symbol', 'ZapfDingbats']
-            st.session_state['font_name'] = st.selectbox(
-                "Font", 
-                font_options, 
-                index=font_options.index(st.session_state['font_name'])
-            )
+                    # Font Style Selection
+                    font_options = ['Helvetica', 'Times-Roman', 'Courier', 'Symbol', 'ZapfDingbats']
+                    st.session_state['font_name'] = st.selectbox(
+                        "Font",
+                        font_options,
+                        index=font_options.index(st.session_state['font_name'])
+                    )
 
-            st.session_state['font_size'] = st.number_input(
-                "Font Size", 
-                min_value=8, 
-                max_value=72, 
-                value=st.session_state['font_size']
-            )
-            st.session_state['text_color'] = st.color_picker(
-                "Text Color", 
-                value=st.session_state['text_color']  # Use session state value
-            )
+                    st.session_state['font_size'] = st.number_input(
+                        "Font Size",
+                        min_value=8,
+                        max_value=72,
+                        value=st.session_state['font_size']
+                    )
+                    st.session_state['text_color'] = st.color_picker(
+                        "Text Color",
+                        value=st.session_state['text_color']  # Use session state value
+                    )
 
-            # Text Input and Positioning
-            text_to_add = st.text_input("Text to Add")
-            x_position = st.number_input("X Position (inches)", min_value=0.0, max_value=8.5, value=1.0)
-            y_position = st.number_input("Y Position (inches from top)", min_value=0.0, max_value=11.0, value=1.0)
+                    # Text Input and Positioning
+                    text_to_add = st.text_input("Text to Add")
+                    x_position = st.number_input("X Position (inches)", min_value=0.0, max_value=8.5, value=1.0)
+                    y_position = st.number_input("Y Position (inches from top)", min_value=0.0, max_value=11.0, value=1.0)
 
-            if st.button("Add Text"):
-                if text_to_add:
-                    st.session_state['added_elements'].append({
-                        'text': text_to_add,
-                        'x': x_position,
-                        'y': y_position,
-                        'font_name': st.session_state['font_name'],
-                        'font_size': st.session_state['font_size'],
-                        'color': st.session_state['text_color']
-                    })
-                else:
-                    st.warning("Please enter text to add.")
+                    if st.button("Add Text"):
+                        if text_to_add:
+                            st.session_state['added_elements'].append({
+                                'text': text_to_add,
+                                'x': x_position,
+                                'y': y_position,
+                                'font_name': st.session_state['font_name'],
+                                'font_size': st.session_state['font_size'],
+                                'color': st.session_state['text_color']
+                            })
+                        else:
+                            st.warning("Please enter text to add.")
 
-            # Apply Edits and Download
-            if st.button("Apply Edits and Download"):
-                if st.session_state['added_elements']:
-                    try:
-                        # Create temporary output PDF
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_output_pdf:
-                            output_pdf_path = temp_output_pdf.name
+                    # Apply Edits and Download
+                    if st.button("Apply Edits and Download"):
+                        if st.session_state['added_elements']:
+                            try:
+                                # Create temporary output PDF
+                                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_output_pdf:
+                                    output_pdf_path = temp_output_pdf.name
 
-                        success = True
-                        for element in st.session_state['added_elements']:
-                            success = add_text_to_pdf(
-                                input_pdf_path, 
-                                output_pdf_path, 
-                                element['text'], 
-                                element['x'], 
-                                element['y'], 
-                                element['font_name'], 
-                                element['font_size'], 
-                                element['color']
-                            )
-                            if not success:
-                                break
+                                success = True
+                                for element in st.session_state['added_elements']:
+                                    if input_pdf_path and output_pdf_path:
+                                        success = add_text_to_pdf(
+                                            input_pdf_path,
+                                            output_pdf_path,
+                                            element['text'],
+                                            element['x'],
+                                            element['y'],
+                                            element['font_name'],
+                                            element['font_size'],
+                                            element['color']
+                                        )
+                                        if not success:
+                                            break
+                                    else:
+                                        st.error("Input or Output PDF path is invalid.")
+                                        success = False
+                                        break  # Exit the loop
 
-                        if success:
-                            # PDF Download
-                            with open(output_pdf_path, "rb") as f:
-                                edited_pdf_bytes = f.read()
-                            st.download_button(
-                                label="Download Edited PDF",
-                                data=edited_pdf_bytes,
-                                file_name="edited.pdf",
-                                mime="application/pdf"
-                            )
+                                if success:
+                                    if output_pdf_path:
+                                        # PDF Download
+                                        with open(output_pdf_path, "rb") as f:
+                                            edited_pdf_bytes = f.read()
+                                        st.download_button(
+                                            label="Download Edited PDF",
+                                            data=edited_pdf_bytes,
+                                            file_name="edited.pdf",
+                                            mime="application/pdf"
+                                        )
 
-                            # Optional DOCX Conversion
-                            if DOCX_CONVERSION_AVAILABLE:
-                                # Create a temporary DOCX file
-                                with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_docx:
-                                    docx_path = temp_docx.name
+                                        # Optional DOCX Conversion
+                                        if DOCX_CONVERSION_AVAILABLE:
+                                            # Create a temporary DOCX file
+                                            with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_docx:
+                                                docx_path = temp_docx.name
 
-                                if convert_pdf_to_docx(output_pdf_path, docx_path):
-                                    with open(docx_path, "rb") as f:
-                                        docx_bytes = f.read()
-                                    st.download_button(
-                                        label="Download DOCX (Optional)",
-                                        data=docx_bytes,
-                                        file_name="converted.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    )
+                                            if convert_pdf_to_docx(output_pdf_path, docx_path):
+                                                with open(docx_path, "rb") as f:
+                                                    docx_bytes = f.read()
+                                                st.download_button(
+                                                    label="Download DOCX (Optional)",
+                                                    data=docx_bytes,
+                                                    file_name="converted.docx",
+                                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                                )
+                                            else:
+                                                st.error("DOCX conversion failed.")
 
-                            # Clear added elements
-                            st.session_state['added_elements'] = []
+
+                                    else:
+                                        st.error("Output PDF path is invalid during download.")
+
+
+                                    # Clear added elements
+                                    st.session_state['added_elements'] = []
+
+                                else:
+                                    st.error("Failed to apply all edits. See error messages above.")
+
+                            except Exception as e:
+                                st.error(f"An unexpected error occurred during apply edits: {e}")
+
+
 
                         else:
-                            st.error("Failed to apply all edits. See error messages above.")
+                            st.warning("No edits to apply. Add text first.")
+                except Exception as e:
+                   st.error(f"Error during processing of PDF content: {e}")
+            else:
+               st.error("Failed to create temporary PDF file.")
 
-                    except Exception as e:
-                        st.error(f"An unexpected error occurred: {e}")
-
-                else:
-                    st.warning("No edits to apply. Add text first.")
 
         except Exception as e:
             st.error(f"Error during file upload and processing: {e}")
-            if 'input_pdf_path' in locals():  # If temp file was created, try to clean up
-               try:
-                  os.unlink(input_pdf_path)
-               except:
-                  pass
 
 
-        # Clean up temporary files (moved inside the main if block and with error handling)
-        if 'input_pdf_path' in locals():
-            try:
-                os.unlink(input_pdf_path)
-            except Exception as e:
-                st.warning(f"Could not delete temporary file: {input_pdf_path}.  Error: {e}")
-        if 'output_pdf_path' in locals():
-             try:
-                 os.unlink(output_pdf_path)
-             except Exception as e:
-                 st.warning(f"Could not delete temporary file: {output_pdf_path}. Error: {e}")
-        if 'docx_path' in locals() and DOCX_CONVERSION_AVAILABLE:
-            try:
-                os.unlink(docx_path)
-            except Exception as e:
-                st.warning(f"Could not delete temporary file: {docx_path}.  Error: {e}")
+        finally:  # Ensure cleanup happens even if errors occur
+            # Clean up temporary files (moved inside the main if block and with error handling)
+            if input_pdf_path:
+                try:
+                    os.unlink(input_pdf_path)
+                except Exception as e:
+                    st.warning(f"Could not delete temporary file: {input_pdf_path}.  Error: {e}")
+            if output_pdf_path:
+                try:
+                    os.unlink(output_pdf_path)
+                except Exception as e:
+                    st.warning(f"Could not delete temporary file: {output_pdf_path}. Error: {e}")
+            if docx_path and DOCX_CONVERSION_AVAILABLE:
+                try:
+                    os.unlink(docx_path)
+                except Exception as e:
+                    st.warning(f"Could not delete temporary file: {docx_path}.  Error: {e}")
 
 
 if __name__ == "__main__":
