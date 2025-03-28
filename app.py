@@ -1,201 +1,134 @@
 import streamlit as st
+from PIL import Image
 import io
 import os
-from PyPDF2 import PdfReader, PdfWriter
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-import tempfile
 
-# Initialize session state
-def initialize_session_state():
-    default_states = {
-        'font_name': 'Helvetica',
-        'font_size': 12,
-        'added_elements': []
-    }
-    for key, value in default_states.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+def compress_image(image, quality):
+    """Compresses a PIL Image object.
 
-# Function to add text to PDF (Hardcoded Black Color)
-def add_text_to_pdf(pdf_path, output_path, text, x, y, font_name, font_size):
-    try:
-        # Load the PDF
-        existing_pdf = PdfReader(open(pdf_path, 'rb'))
-        output_pdf = PdfWriter()
+    Args:
+        image: PIL Image object.
+        quality: Compression quality (0-100).
 
-        # Create a PDF canvas to write on
-        for page_num in range(len(existing_pdf.pages)):
-            page = existing_pdf.pages[page_num]
+    Returns:
+        A BytesIO object containing the compressed image.
+    """
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='JPEG', quality=quality, optimize=True)
+    img_byte_arr = io.BytesIO(img_byte_arr.getvalue()) #Reset read pointer to the beginning
+    return img_byte_arr
 
-            # Create a new PDF with Reportlab for the text
-            packet = io.BytesIO()
-            can = canvas.Canvas(packet, pagesize=letter)
 
-            # Set font and color (Hardcoded Black)
-            can.setFont(font_name, font_size)
-            can.setFillColor('#000000')  # Hardcoded black color
+def crop_image(image, x1, y1, x2, y2):
+    """Crops a PIL Image object.
 
-            # Add text (only to the first page)
-            if page_num == 0:
-                can.drawString(x * inch, (letter[1] - y) * inch, text)
+    Args:
+        image: PIL Image object.
+        x1: Left coordinate of the crop box.
+        y1: Top coordinate of the crop box.
+        x2: Right coordinate of the crop box.
+        y2: Bottom coordinate of the crop box.
 
-            can.save()
+    Returns:
+        A PIL Image object containing the cropped image.
+    """
+    return image.crop((x1, y1, x2, y2))
 
-            # Move to the beginning of the buffer
-            packet.seek(0)
-            new_pdf = PdfReader(packet)
 
-            # Merge the new text with the existing PDF page
-            page.merge_page(new_pdf.pages[0])
-            output_pdf.add_page(page)
+def resize_image(image, width, height):
+    """Resizes a PIL Image object.
 
-        # Write the modified PDF to a new file
-        with open(output_path, "wb") as f:
-            output_pdf.write(f)
-        return True
+    Args:
+        image: PIL Image object.
+        width: Desired width.
+        height: Desired height.
 
-    except Exception as e:
-        st.error(f"Error adding text to PDF: {e}")
-        return False
+    Returns:
+        A PIL Image object containing the resized image.
+    """
+    return image.resize((width, height))
 
-# Main Streamlit App
+
 def main():
-    # Initialize session state
-    initialize_session_state()
+    st.title("Image Compressor, Cropper, and Resizer")
 
-    st.title("Basic PDF Editor")
-
-    # File Upload
-    uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
+    uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
     if uploaded_file is not None:
-        input_pdf_path = None  # Initialize outside the try block
-        output_pdf_path = None
+        image = Image.open(uploaded_file)
+        original_size = len(uploaded_file.getvalue())  # Size in bytes
+        st.image(image, caption="Original Image", use_column_width=True)
+        st.write(f"Original Size: {original_size / 1024:.2f} KB")
 
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_input_pdf:
-                input_pdf_path = temp_input_pdf.name
-                temp_input_pdf.write(uploaded_file.getbuffer())
 
-            # Display PDF information
-            if input_pdf_path:  # Only proceed if input_pdf_path is valid
-                try:
-                    pdf_reader = PdfReader(open(input_pdf_path, 'rb'))
-                    num_pages = len(pdf_reader.pages)
-                    st.write(f"Number of pages: {num_pages}")
+        # Compression Options
+        st.header("Compression")
+        quality = st.slider("Compression Quality (0-100)", min_value=1, max_value=100, value=75)
+        compressed_buffer = compress_image(image, quality)
+        compressed_size = len(compressed_buffer.getvalue())
+        compression_ratio = (1 - (compressed_size / original_size)) * 100
 
-                    # Editing Tools
-                    st.header("PDF Editing")
+        st.write(f"Compressed Size: {compressed_size / 1024:.2f} KB")
+        st.write(f"Compression Ratio: {compression_ratio:.2f}%")
 
-                    # Font Style Selection
-                    font_options = ['Helvetica', 'Times-Roman', 'Courier', 'Symbol', 'ZapfDingbats']
-                    st.session_state['font_name'] = st.selectbox(
-                        "Font",
-                        font_options,
-                        index=0  # Default to Helvetica
-                    )
 
-                    st.session_state['font_size'] = st.number_input(
-                        "Font Size",
-                        min_value=8,
-                        max_value=72,
-                        value=12  # Default font size
-                    )
+        # Cropping Functionality
+        st.header("Cropping")
+        width, height = image.size
+        x1 = st.number_input("Left X", min_value=0, max_value=width, value=0)
+        y1 = st.number_input("Top Y", min_value=0, max_value=height, value=0)
+        x2 = st.number_input("Right X", min_value=0, max_value=width, value=width)
+        y2 = st.number_input("Bottom Y", min_value=0, max_value=height, value=height)
 
-                    # Text Input and Positioning
-                    text_to_add = st.text_input("Text to Add")
-                    x_position = st.number_input("X Position (inches)", min_value=0.0, max_value=8.5, value=1.0)
-                    y_position = st.number_input("Y Position (inches from top)", min_value=0.0, max_value=11.0, value=1.0)
+        if x1 < x2 and y1 < y2:
+            cropped_image = crop_image(image, x1, y1, x2, y2)
+            st.image(cropped_image, caption="Cropped Image", use_column_width=True)
 
-                    if st.button("Add Text"):
-                        if text_to_add:
-                            st.session_state['added_elements'].append({
-                                'text': text_to_add,
-                                'x': x_position,
-                                'y': y_position,
-                                'font_name': st.session_state['font_name'],
-                                'font_size': st.session_state['font_size'],
-                            })
-                        else:
-                            st.warning("Please enter text to add.")
+            #Resizing
 
-                    # Apply Edits and Download
-                    if st.button("Apply Edits and Download"):
-                        if st.session_state['added_elements']:
-                            try:
-                                # Create temporary output PDF
-                                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_output_pdf:
-                                    output_pdf_path = temp_output_pdf.name
+            st.header("Resizing")
+            resize_width = st.number_input("Resize Width", min_value=1, max_value=width, value=width)
+            resize_height = st.number_input("Resize Height", min_value=1, max_value=height, value=height)
 
-                                success = True
-                                for element in st.session_state['added_elements']:
-                                    if input_pdf_path and output_pdf_path:
-                                        success = add_text_to_pdf(
-                                            input_pdf_path,
-                                            output_pdf_path,
-                                            element['text'],
-                                            element['x'],
-                                            element['y'],
-                                            element['font_name'],
-                                            element['font_size']
-                                        )
-                                        if not success:
-                                            break
-                                    else:
-                                        st.error("Input or Output PDF path is invalid.")
-                                        success = False
-                                        break  # Exit the loop
+            resized_image = resize_image(cropped_image, resize_width, resize_height)
+            st.image(resized_image, caption="Resized Image", use_column_width=True)
 
-                                if success:
-                                    if output_pdf_path:
-                                        # PDF Download
-                                        with open(output_pdf_path, "rb") as f:
-                                            edited_pdf_bytes = f.read()
-                                        st.download_button(
-                                            label="Download Edited PDF",
-                                            data=edited_pdf_bytes,
-                                            file_name="edited.pdf",
-                                            mime="application/pdf"
-                                        )
 
-                                    else:
-                                        st.error("Output PDF path is invalid during download.")
+            # Download Button
+            st.header("Download")
 
-                                    # Clear added elements
-                                    st.session_state['added_elements'] = []
+            image_format = st.selectbox("Choose format to download", ("JPEG", "PNG"))
 
-                                else:
-                                    st.error("Failed to apply all edits. See error messages above.")
+            if image_format == "JPEG":
 
-                            except Exception as e:
-                                st.error(f"An unexpected error occurred during apply edits: {e}")
+                 download_buffer = io.BytesIO()
+                 resized_image.save(download_buffer, format="JPEG", quality=quality)  # Use the slider value
+                 download_buffer.seek(0)
 
-                        else:
-                            st.warning("No edits to apply. Add text first.")
-                except Exception as e:
-                   st.error(f"Error during processing of PDF content: {e}")
-            else:
-               st.error("Failed to create temporary PDF file.")
 
-        except Exception as e:
-            st.error(f"Error during file upload and processing: {e}")
+                 st.download_button(
+                    label="Download Modified Image",
+                    data=download_buffer,
+                    file_name="modified_image.jpeg",
+                    mime="image/jpeg",
+                 )
 
-        finally:  # Ensure cleanup happens even if errors occur
-            # Clean up temporary files (moved inside the main if block and with error handling)
-            if input_pdf_path:
-                try:
-                    os.unlink(input_pdf_path)
-                except Exception as e:
-                    st.warning(f"Could not delete temporary file: {input_pdf_path}.  Error: {e}")
-            if output_pdf_path:
-                try:
-                    os.unlink(output_pdf_path)
-                except Exception as e:
-                    st.warning(f"Could not delete temporary file: {output_pdf_path}. Error: {e}")
+            elif image_format == "PNG":
+                 download_buffer = io.BytesIO()
+                 resized_image.save(download_buffer, format="PNG")
+                 download_buffer.seek(0)
+
+                 st.download_button(
+                    label="Download Modified Image",
+                    data=download_buffer,
+                    file_name="modified_image.png",
+                    mime="image/png",
+                 )
+
+
+
+        else:
+            st.error("Invalid cropping coordinates. Ensure Left X < Right X and Top Y < Bottom Y.")
 
 
 if __name__ == "__main__":
