@@ -1,6 +1,5 @@
-streamlit==1.29.0
+streamlit==1.31.1
 PyPDF2==3.0.1
-reportlab==4.0.7
-pdf2docx==2.0.1
-docx==0.2.4
-io
+reportlab==4.0.9
+pdf2docx==0.5.6
+python-docx==1.1.0
