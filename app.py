@@ -1,5 +1,6 @@
 import streamlit as st
 import io
+import os
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
@@ -8,18 +9,20 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from pdf2docx import Converter
 import docx
-from docx.shared import Inches
-import os
+from docx.shared import Pt
+import tempfile
 
 # Initialize session state
-if 'font_name' not in st.session_state:
-    st.session_state['font_name'] = 'Helvetica'  # Default font
-if 'font_size' not in st.session_state:
-    st.session_state['font_size'] = 12
-if 'text_color' not in st.session_state:
-    st.session_state['text_color'] = 'black'
-if 'added_elements' not in st.session_state:
-    st.session_state['added_elements'] = []  # Store added text elements and their properties
+def initialize_session_state():
+    default_states = {
+        'font_name': 'Helvetica',
+        'font_size': 12,
+        'text_color': 'black',
+        'added_elements': []
+    }
+    for key, value in default_states.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 # Function to convert PDF to DOCX (Preserving formatting as much as possible)
 def convert_pdf_to_docx(pdf_path, docx_path):
@@ -32,39 +35,40 @@ def convert_pdf_to_docx(pdf_path, docx_path):
         st.error(f"Error converting PDF to DOCX: {e}")
         return False
 
-
 # Function to add text to PDF
 def add_text_to_pdf(pdf_path, output_path, text, x, y, font_name, font_size, color):
     try:
         # Load the PDF
-        existing_pdf = PdfReader(pdf_path)
-        page = existing_pdf.pages[0]  # Assuming adding to the first page
+        existing_pdf = PdfReader(open(pdf_path, 'rb'))
+        output_pdf = PdfWriter()
 
         # Create a PDF canvas to write on
-        packet = io.BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
+        for page_num in range(len(existing_pdf.pages)):
+            page = existing_pdf.pages[page_num]
+            
+            # Create a new PDF with Reportlab for the text
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=letter)
 
-        # Register fonts if needed (e.g., for custom fonts)
-        # pdfmetrics.registerFont(TTFont('CustomFont', 'path/to/custom_font.ttf'))  #Example custom font
-        can.setFont(font_name, font_size)
-        can.setFillColor(color)
+            # Set font and color
+            can.setFont(font_name, font_size)
+            can.setFillColor(color)
 
-        can.drawString(x * inch, (letter[1] - y) * inch, text) #Inverted Y coordinate
-        can.save()
+            # Add text (only to the first page)
+            if page_num == 0:
+                can.drawString(x * inch, (letter[1] - y) * inch, text)
+            
+            can.save()
 
-        # Move to the beginning of the buffer
-        packet.seek(0)
-        new_pdf = PdfReader(packet)
+            # Move to the beginning of the buffer
+            packet.seek(0)
+            new_pdf = PdfReader(packet)
 
-        # Merge the new text with the existing PDF
-        page.merge_page(new_pdf.pages[0])
+            # Merge the new text with the existing PDF page
+            page.merge_page(new_pdf.pages[0])
+            output_pdf.add_page(page)
 
         # Write the modified PDF to a new file
-        output_pdf = PdfWriter()
-        output_pdf.add_page(page)  #Only add the edited page
-        for i in range(1,len(existing_pdf.pages)):
-            output_pdf.add_page(existing_pdf.pages[i])
-
         with open(output_path, "wb") as f:
             output_pdf.write(f)
         return True
@@ -73,115 +77,132 @@ def add_text_to_pdf(pdf_path, output_path, text, x, y, font_name, font_size, col
         st.error(f"Error adding text to PDF: {e}")
         return False
 
-# Streamlit App
-st.title("PDF Editor and Converter")
+# Main Streamlit App
+def main():
+    # Initialize session state
+    initialize_session_state()
 
-# File Upload
-uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
+    st.title("PDF Editor and Converter")
 
-if uploaded_file is not None:
-    # Display PDF information (optional)
-    pdf_reader = PdfReader(uploaded_file)
-    num_pages = len(pdf_reader.pages)
-    st.write(f"Number of pages: {num_pages}")
+    # File Upload
+    uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
 
-    # Editing Tools
-    st.header("PDF Editing")
+    if uploaded_file is not None:
+        # Create temporary files to work with
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_input_pdf:
+            temp_input_pdf.write(uploaded_file.getbuffer())
+            input_pdf_path = temp_input_pdf.name
 
-    # Font Style Selection
-    font_options = ['Helvetica', 'Times-Roman', 'Courier', 'Symbol', 'ZapfDingbats']
-    st.session_state['font_name'] = st.selectbox("Font", font_options, index=font_options.index(st.session_state['font_name']))
+        # Display PDF information
+        pdf_reader = PdfReader(open(input_pdf_path, 'rb'))
+        num_pages = len(pdf_reader.pages)
+        st.write(f"Number of pages: {num_pages}")
 
-    st.session_state['font_size'] = st.number_input("Font Size", min_value=8, max_value=72, value=st.session_state['font_size'])
-    st.session_state['text_color'] = st.color_picker("Text Color", value=st.session_state['text_color'])
+        # Editing Tools
+        st.header("PDF Editing")
 
-    # Text Input and Positioning
-    text_to_add = st.text_input("Text to Add")
-    x_position = st.number_input("X Position (inches)", min_value=0.0, max_value=8.5, value=1.0)
-    y_position = st.number_input("Y Position (inches from top)", min_value=0.0, max_value=11.0, value=1.0)
+        # Font Style Selection
+        font_options = ['Helvetica', 'Times-Roman', 'Courier', 'Symbol', 'ZapfDingbats']
+        st.session_state['font_name'] = st.selectbox(
+            "Font", 
+            font_options, 
+            index=font_options.index(st.session_state['font_name'])
+        )
 
-    if st.button("Add Text"):
-        if text_to_add:
-            st.session_state['added_elements'].append({
-                'text': text_to_add,
-                'x': x_position,
-                'y': y_position,
-                'font_name': st.session_state['font_name'],
-                'font_size': st.session_state['font_size'],
-                'color': st.session_state['text_color']
-            })
-        else:
-            st.warning("Please enter text to add.")
+        st.session_state['font_size'] = st.number_input(
+            "Font Size", 
+            min_value=8, 
+            max_value=72, 
+            value=st.session_state['font_size']
+        )
+        st.session_state['text_color'] = st.color_picker(
+            "Text Color", 
+            value=st.session_state['text_color']
+        )
 
-    # Apply Edits and Download
-    if st.button("Apply Edits and Download PDF"):
-        if st.session_state['added_elements']:
-            try:
-                # Save the uploaded PDF to a temporary file
-                pdf_path = "temp.pdf"
-                with open(pdf_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+        # Text Input and Positioning
+        text_to_add = st.text_input("Text to Add")
+        x_position = st.number_input("X Position (inches)", min_value=0.0, max_value=8.5, value=1.0)
+        y_position = st.number_input("Y Position (inches from top)", min_value=0.0, max_value=11.0, value=1.0)
 
-                output_path = "edited.pdf"
-                success = True
+        if st.button("Add Text"):
+            if text_to_add:
+                st.session_state['added_elements'].append({
+                    'text': text_to_add,
+                    'x': x_position,
+                    'y': y_position,
+                    'font_name': st.session_state['font_name'],
+                    'font_size': st.session_state['font_size'],
+                    'color': st.session_state['text_color']
+                })
+            else:
+                st.warning("Please enter text to add.")
 
-                for element in st.session_state['added_elements']:
-                    success = add_text_to_pdf(pdf_path, output_path, element['text'], element['x'], element['y'], element['font_name'], element['font_size'], element['color'])
-                    if not success:
-                        break #Stop applying if one fails
+        # Apply Edits and Download
+        if st.button("Apply Edits and Download"):
+            if st.session_state['added_elements']:
+                try:
+                    # Create temporary output PDF
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_output_pdf:
+                        output_pdf_path = temp_output_pdf.name
 
+                    success = True
+                    for element in st.session_state['added_elements']:
+                        success = add_text_to_pdf(
+                            input_pdf_path, 
+                            output_pdf_path, 
+                            element['text'], 
+                            element['x'], 
+                            element['y'], 
+                            element['font_name'], 
+                            element['font_size'], 
+                            element['color']
+                        )
+                        if not success:
+                            break
 
-                if success:
-                    with open(output_path, "rb") as f:
-                        edited_pdf_bytes = f.read()
-                    st.download_button(
-                        label="Download Edited PDF",
-                        data=edited_pdf_bytes,
-                        file_name="edited.pdf",
-                        mime="application/pdf"
-                    )
-                else:
-                    st.error("Failed to apply all edits.  See error messages above.")
+                    if success:
+                        # PDF Download
+                        with open(output_pdf_path, "rb") as f:
+                            edited_pdf_bytes = f.read()
+                        st.download_button(
+                            label="Download Edited PDF",
+                            data=edited_pdf_bytes,
+                            file_name="edited.pdf",
+                            mime="application/pdf"
+                        )
 
+                        # DOCX Conversion and Download
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_docx:
+                            docx_path = temp_docx.name
 
-                # Clean up temporary file
-                os.remove(pdf_path)
-                if os.path.exists(output_path):
-                    os.remove(output_path)  # Clean up the edited file too
-                st.session_state['added_elements'] = [] # clear edits
-            except Exception as e:
-                st.error(f"An unexpected error occurred: {e}")
+                        if convert_pdf_to_docx(output_pdf_path, docx_path):
+                            with open(docx_path, "rb") as f:
+                                docx_bytes = f.read()
+                            st.download_button(
+                                label="Download DOCX",
+                                data=docx_bytes,
+                                file_name="converted.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            )
 
-        else:
-            st.warning("No edits to apply. Add text first.")
+                        # Clear added elements
+                        st.session_state['added_elements'] = []
 
+                    else:
+                        st.error("Failed to apply all edits. See error messages above.")
 
+                except Exception as e:
+                    st.error(f"An unexpected error occurred: {e}")
 
-    # PDF to DOCX Conversion
-    st.header("PDF to DOCX Conversion")
-    if st.button("Convert to DOCX"):
+            else:
+                st.warning("No edits to apply. Add text first.")
+
+        # Clean up temporary files
         try:
-            # Save the uploaded PDF to a temporary file
-            pdf_path = "temp.pdf"
-            with open(pdf_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+            os.unlink(input_pdf_path)
+        except:
+            pass
 
-            docx_path = "converted.docx"
-            if convert_pdf_to_docx(pdf_path, docx_path):
-                with open(docx_path, "rb") as f:
-                    docx_bytes = f.read()
-
-                st.download_button(
-                    label="Download DOCX",
-                    data=docx_bytes,
-                    file_name="converted.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-
-            # Clean up temporary file
-            os.remove(pdf_path)
-            if os.path.exists(docx_path):
-                os.remove(docx_path)
-
-        except Exception as e:
-            st.error(f"Conversion error: {e}")
+if __name__ == "__main__":
+    main()
