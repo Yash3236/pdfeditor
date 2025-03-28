@@ -6,14 +6,14 @@ def compress_image(image, quality):
     """Compresses a PIL Image object."""
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='JPEG', quality=quality, optimize=True)
-    img_byte_arr.seek(0)  # Reset pointer
+    img_byte_arr.seek(0)
     return img_byte_arr
 
 def crop_image(image, x1, y1, x2, y2):
     """Crops a PIL Image object."""
     return image.crop((x1, y1, x2, y2))
 
-def resize_image(image, width=None, height=None, percentage=None, preserve_aspect_ratio=True):
+def resize_image(image, width=None, height=None, percentage=None, cm_width=None, cm_height=None, dpi=300, preserve_aspect_ratio=True):
     """Resizes a PIL Image object with flexible options."""
     original_width, original_height = image.size
 
@@ -21,21 +21,22 @@ def resize_image(image, width=None, height=None, percentage=None, preserve_aspec
         width = int(original_width * (percentage / 100))
         height = int(original_height * (percentage / 100))
     elif width and height:
-        pass  # Use provided width and height
+        pass  # Use provided pixel width and height
+    elif cm_width and cm_height:
+        width = int(cm_width * dpi / 2.54)  # Convert cm to pixels
+        height = int(cm_height * dpi / 2.54) # cm to pixels
     else:
-        raise ValueError("Either width and height, or percentage must be provided for resizing.")
+        raise ValueError("Provide either width/height (pixels), cm_width/cm_height (cm), or percentage for resizing.")
 
     if preserve_aspect_ratio:
         ratio = min(width / original_width, height / original_height)
         width = int(original_width * ratio)
         height = int(original_height * ratio)
 
-    return image.resize((width, height), Image.LANCZOS)  # Use LANCZOS for high-quality resizing
-
-
+    return image.resize((width, height), Image.LANCZOS)
 
 def main():
-    st.title("Image Editor: Compress, Crop, Resize")
+    st.title("Advanced Image Editor")
 
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
@@ -68,27 +69,33 @@ def main():
 
             # Resizing
             st.header("Resizing")
-            resize_option = st.radio("Resize Option", ["Dimensions", "Percentage"], index=0)
+            resize_option = st.radio("Resize Option", ["Pixels", "Centimeters", "Percentage"], index=0)
             preserve_aspect = st.checkbox("Preserve Aspect Ratio", value=True)
 
-            if resize_option == "Dimensions":
-                resize_width = st.number_input("Width", min_value=1, max_value=width, value=width)
-                resize_height = st.number_input("Height", min_value=1, max_value=height, value=height)
-                try:
+            dpi = st.number_input("DPI (Dots Per Inch)", min_value=1, max_value=1200, value=300)  # Default DPI
+
+            try:
+                if resize_option == "Pixels":
+                    resize_width = st.number_input("Width (pixels)", min_value=1, max_value=width, value=width)
+                    resize_height = st.number_input("Height (pixels)", min_value=1, max_value=height, value=height)
                     resized_image = resize_image(cropped_image, width=resize_width, height=resize_height, preserve_aspect_ratio=preserve_aspect)
-                except ValueError as e:
-                    st.error(str(e))
-                    resized_image = cropped_image  # Use the cropped image if there's an error
+                elif resize_option == "Centimeters":
+                    cm_width = st.number_input("Width (cm)", min_value=0.1, max_value=width/ (dpi / 2.54), value=width / (dpi / 2.54)) #max value calculated
+                    cm_height = st.number_input("Height (cm)", min_value=0.1, max_value=height/ (dpi / 2.54), value=height/ (dpi / 2.54)) #max value calculated
 
-            elif resize_option == "Percentage":
-                resize_percentage = st.number_input("Percentage (%)", min_value=1, max_value=500, value=100)
-                try:
+                    resized_image = resize_image(cropped_image, cm_width=cm_width, cm_height=cm_height, dpi=dpi, preserve_aspect_ratio=preserve_aspect)
+
+                elif resize_option == "Percentage":
+                    resize_percentage = st.number_input("Percentage (%)", min_value=1, max_value=500, value=100)
                     resized_image = resize_image(cropped_image, percentage=resize_percentage, preserve_aspect_ratio=preserve_aspect)
-                except ValueError as e:
-                    st.error(str(e))
-                    resized_image = cropped_image # Use the cropped image if there's an error
+                else:
+                    raise ValueError("Invalid resize option.")
 
-            st.image(resized_image, caption="Resized Image", use_column_width=True)
+                st.image(resized_image, caption="Resized Image", use_column_width=True)
+
+            except ValueError as e:
+                st.error(str(e))
+                resized_image = cropped_image  # Use cropped image on error
 
             # Download
             st.header("Download")
