@@ -1,5 +1,2 @@
-streamlit==1.31.1
-PyPDF2==3.0.1
-reportlab==4.0.9
-pdf2docx==0.5.6  # Optional, requires opencv
-opencv-python-headless==4.8.1.78  # Optional, for pdf2docx
+streamlit
+Pillow
