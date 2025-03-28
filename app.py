@@ -7,10 +7,14 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from pdf2docx import Converter
-import docx
-from docx.shared import Pt
 import tempfile
+
+# Optional imports for DOCX conversion
+try:
+    import pdf2docx
+    DOCX_CONVERSION_AVAILABLE = True
+except ImportError:
+    DOCX_CONVERSION_AVAILABLE = False
 
 # Initialize session state
 def initialize_session_state():
@@ -26,8 +30,12 @@ def initialize_session_state():
 
 # Function to convert PDF to DOCX (Preserving formatting as much as possible)
 def convert_pdf_to_docx(pdf_path, docx_path):
+    if not DOCX_CONVERSION_AVAILABLE:
+        st.warning("DOCX conversion requires additional dependencies (pdf2docx and opencv).")
+        return False
+    
     try:
-        cv = Converter(pdf_path)
+        cv = pdf2docx.Converter(pdf_path)
         cv.convert(docx_path, start=0, end=None)  # Convert all pages
         cv.close()
         return True
@@ -82,7 +90,7 @@ def main():
     # Initialize session state
     initialize_session_state()
 
-    st.title("PDF Editor and Converter")
+    st.title("PDF Editor")
 
     # File Upload
     uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
@@ -172,19 +180,21 @@ def main():
                             mime="application/pdf"
                         )
 
-                        # DOCX Conversion and Download
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_docx:
-                            docx_path = temp_docx.name
+                        # Optional DOCX Conversion
+                        if DOCX_CONVERSION_AVAILABLE:
+                            # Create a temporary DOCX file
+                            with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_docx:
+                                docx_path = temp_docx.name
 
-                        if convert_pdf_to_docx(output_pdf_path, docx_path):
-                            with open(docx_path, "rb") as f:
-                                docx_bytes = f.read()
-                            st.download_button(
-                                label="Download DOCX",
-                                data=docx_bytes,
-                                file_name="converted.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            )
+                            if convert_pdf_to_docx(output_pdf_path, docx_path):
+                                with open(docx_path, "rb") as f:
+                                    docx_bytes = f.read()
+                                st.download_button(
+                                    label="Download DOCX (Optional)",
+                                    data=docx_bytes,
+                                    file_name="converted.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                )
 
                         # Clear added elements
                         st.session_state['added_elements'] = []
