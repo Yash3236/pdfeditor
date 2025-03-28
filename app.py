@@ -21,7 +21,7 @@ def initialize_session_state():
     default_states = {
         'font_name': 'Helvetica',
         'font_size': 12,
-        'text_color': '#000000',  # Default to black hex code (FIXED!)
+        'text_color': '#000000',  # Default to black hex code
         'added_elements': []
     }
     for key, value in default_states.items():
@@ -60,7 +60,14 @@ def add_text_to_pdf(pdf_path, output_path, text, x, y, font_name, font_size, col
 
             # Set font and color
             can.setFont(font_name, font_size)
-            can.setFillColor(color)
+
+            # Ensure color is handled as a string (hex code)
+            if isinstance(color, tuple) or isinstance(color, list):  # Convert RGB/RGBA tuple to hex
+                hex_color = '#{:02x}{:02x}{:02x}'.format(int(color[0] * 255), int(color[1] * 255),
+                                                         int(color[2] * 255))  # Assumes RGB in range 0-1
+                can.setFillColor(hex_color)
+            else:  # Assume it's a hex code string (or something ReportLab can handle)
+                can.setFillColor(color)
 
             # Add text (only to the first page)
             if page_num == 0:
